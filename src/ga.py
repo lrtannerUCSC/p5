@@ -67,17 +67,54 @@ class Individual_Grid(object):
         # STUDENT implement a mutation operator, also consider not mutating this individual
         # STUDENT also consider weighting the different tile types so it's not uniformly random
         # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
+        mutation_rate = 0.01  # 1% chance to mutate each tile
 
+        # Iterate over each cell in the grid (excluding the first and last columns)
         left = 1
         right = width - 1
         for y in range(height):
             for x in range(left, right):
-                pass
+                # Decide whether to mutate this tile
+                if random.random() < mutation_rate:
+                    # Choose a new tile type randomly from the options list
+                    new_tile = random.choice(options)
+                    # Ensure the new tile is valid in its position
+                    if self.is_valid_tile(genome, new_tile, x, y):
+                        genome[y][x] = new_tile
+
         return genome
+    
+    # Helper function for mutations to check if new tile is valid
+    def is_valid_tile(self, genome, tile, x, y):
+        # Check if the tile is valid in its position
+        if tile == "|" or tile == "T":  # Pipe segments and tops
+            # Pipes must be placed on solid ground
+            if y < height - 1 and genome[y + 1][x] != "X":
+                return False
+        elif tile == "E":  # Enemies
+            # Enemies must be placed on solid ground or platforms
+            if y < height - 1 and genome[y + 1][x] not in ["X", "B", "?"]:
+                return False
+        # Add more constraints as needed
+        return True
 
     # Create zero or more children from self and other
     def generate_children(self, other):
-        new_genome = copy.deepcopy(self.genome)
+        # Calculate fitness for both parents
+        self_fitness = self.fitness()
+        other_fitness = other.fitness()
+
+        # Determine the bias based on fitness
+        total_fitness = self_fitness + other_fitness
+        if total_fitness == 0:
+            # If both parents have zero fitness, use equal probability
+            bias = 0.5
+        else:
+            # Probability of selecting from self is proportional to its fitness
+            bias = self_fitness / total_fitness
+        
+        new_genome_1 = copy.deepcopy(self.genome)
+        new_genome_2 = copy.deepcopy(self.genome)
         # Leaving first and last columns alone...
         # do crossover with other
         left = 1
@@ -86,9 +123,17 @@ class Individual_Grid(object):
             for x in range(left, right):
                 # STUDENT Which one should you take?  Self, or other?  Why?
                 # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-                pass
+                # Use bias to decide whether to take the gene from self or other
+                if random.random() < bias:
+                    new_genome_1[y][x] = self.genome[y][x]
+                    new_genome_2[y][x] = other.genome[y][x]
+                else:  # 50% chance to take from other
+                    new_genome_1[y][x] = other.genome[y][x]
+                    new_genome_2[y][x] = self.genome[y][x]
         # do mutation; note we're returning a one-element tuple here
-        return (Individual_Grid(new_genome),)
+        new_genome_1 = self.mutate(new_genome_1)
+        new_genome_2 = self.mutate(new_genome_2)
+        return (Individual_Grid(new_genome_1), Individual_Grid(new_genome_2),)
 
     # Turn the genome into a level string (easy for this genome)
     def to_level(self):
@@ -343,12 +388,64 @@ class Individual_DE(object):
 Individual = Individual_Grid
 
 
-def generate_successors(population):
+def generate_successors(population, selection_method="tournament"):
     results = []
     # STUDENT Design and implement this
     # Hint: Call generate_children() on some individuals and fill up results.
+    # Use tournament selection to choose parents
+    
+    # Select the appropriate selection function
+    if selection_method == "tournament":
+        select_parent = tournament_select_parent
+    elif selection_method == "roulette":
+        select_parent = roulette_wheel_select_parent
+    else:
+        raise ValueError("Invalid selection method. Use 'tournament' or 'roulette'.")
+    
+    # Generate children until we have enough for the next generation
+    while len(results) < len(population):
+        # Select two parents
+        parent1 = select_parent(population)
+        parent2 = select_parent(population)
+        
+        # Generate children from the parents
+        children = parent1.generate_children(parent2)
+        
+        # Add the children to the results
+        results.extend(children)
+    
+    # If we generated more children than needed (due to generate_children returning multiple children),
+    # trim the results to match the population size
+    if len(results) > len(population):
+        results = results[:len(population)]
+    
     return results
 
+def tournament_select_parent(population):
+        # Randomly select 20 individuals and return the one with higher fitness
+        candidates = random.sample(population, 20)
+        return max(candidates, key=lambda ind: ind.fitness())
+
+def roulette_wheel_select_parent(population):
+    # Calculate the total fitness of the population
+    total_fitness = sum(ind.fitness() for ind in population)
+    
+    # If total fitness is zero, select a random individual
+    if total_fitness == 0:
+        return random.choice(population)
+    
+    # Pick a random value between 0 and total_fitness
+    pick = random.uniform(0, total_fitness)
+    
+    # Iterate through the population and accumulate fitness until the pick is reached
+    current = 0
+    for ind in population:
+        current += ind.fitness()
+        if current > pick:
+            return ind
+    
+    # If no individual is selected (due to floating-point precision), return the last one
+    return population[-1]
 
 def ga():
     # STUDENT Feel free to play with this parameter
@@ -394,7 +491,7 @@ def ga():
                     break
                 # STUDENT Also consider using FI-2POP as in the Sorenson & Pasquier paper
                 gentime = time.time()
-                next_population = generate_successors(population)
+                next_population = generate_successors(population, selection_method="tournament")
                 gendone = time.time()
                 print("Generated successors in:", gendone - gentime, "seconds")
                 # Calculate fitness in batches in parallel
