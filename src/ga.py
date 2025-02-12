@@ -70,11 +70,11 @@ class Individual_Grid(object):
         tile_weights = {
             "-": 1,  # Empty space (low weight)
             "X": 5,  # Solid wall (high weight)
-            "B": 4,  # Breakable block
-            "?": 3,  # Question block
-            "M": 3,  # Mushroom block
-            "E": 2,  # Enemy
-            "T": 2,  # Pipe top
+            "B": 5,  # Breakable block
+            "?": 2,  # Question block
+            "M": 1,  # Mushroom block
+            "E": 5,  # Enemy
+            "T": 4,  # Pipe top
         }
         tiles = list(tile_weights.keys())
         weights = list(tile_weights.values())
@@ -184,7 +184,7 @@ class Individual_Grid(object):
 
         elif tile == "|":  # Pipe body
             # Place a pipe top above it
-            
+
             # If pipe is above the middle of the level, do not place
             if y < height/2:
                 genome[y][x] = "-"
@@ -242,7 +242,7 @@ class Individual_Grid(object):
         return True
     
     def ground_tile_check(self, genome, tile, x, y):
-        if y == height - 1:  # Check if it's the bottom row
+        if y >= height:  # Check if it's the bottom row
             if tile not in ["X", "-"]:
                 return False
         return True
@@ -272,6 +272,10 @@ class Individual_Grid(object):
     
     def is_question_block_reachable(self, genome, tile, x, y):
         if tile in ["?", "M"]:  # Only apply this check to question mark blocks
+
+            # Check if the question block is too low to headbutt
+            if y >= height - 2:
+                return False
             # Check tiles 1 and 2 spots below the question block
             for dy in range(1, 2):  # Check 1 and 2 tiles below
                 ny = y + dy  # Calculate the y-coordinate of the tile below
