@@ -74,7 +74,6 @@ class Individual_Grid(object):
             "?": 3,  # Question block
             "M": 3,  # Mushroom block
             "E": 2,  # Enemy
-            "|": 2,  # Pipe segment
             "T": 2,  # Pipe top
         }
         tiles = list(tile_weights.keys())
@@ -116,7 +115,7 @@ class Individual_Grid(object):
         # Check if the tile is valid in its position
         if tile == "|" or tile == "T":  # Pipe segments and tops
             # Pipes must be placed on solid ground
-            if y < height - 1 and genome[y + 1][x] != "X":
+            if y < height - 1 and genome[y + 1][x] != ("X" or "|"):
                 return False
             # Ensure pipe segments have a valid top
             if not self.pipe_has_top(genome, tile, x, y):
@@ -310,22 +309,31 @@ class Individual_Grid(object):
             bias = self_fitness / total_fitness
         
         new_genome_1 = copy.deepcopy(self.genome)
-        new_genome_2 = copy.deepcopy(self.genome)
+        # new_genome_2 = copy.deepcopy(self.genome)
         # Leaving first and last columns alone...
         # do crossover with other
         left = 1
         right = width - 1
-        for y in range(height):
-            for x in range(left, right):
-                # STUDENT Which one should you take?  Self, or other?  Why?
-                # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-                # Use bias to decide whether to take the gene from self or other
-                if random.random() < bias:
+        # for y in range(height):
+        #     for x in range(left, right):
+        #         # STUDENT Which one should you take?  Self, or other?  Why?
+        #         # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
+        #         # Use bias to decide whether to take the gene from self or other
+        #         if random.random() < bias:
+        #             new_genome_1[y][x] = self.genome[y][x]
+        #             # new_genome_2[y][x] = other.genome[y][x]
+        #         else:
+        #             new_genome_1[y][x] = other.genome[y][x]
+        #             # new_genome_2[y][x] = self.genome[y][x]
+
+        for x in range(left, right):
+            if random.random() < bias:
+                for y in range(height):
                     new_genome_1[y][x] = self.genome[y][x]
-                    # new_genome_2[y][x] = other.genome[y][x]
-                else:  # 50% chance to take from other
+            else:
+                for y in range(height):
                     new_genome_1[y][x] = other.genome[y][x]
-                    # new_genome_2[y][x] = self.genome[y][x]
+                
         # do mutation; note we're returning a one-element tuple here
         new_genome_1 = self.mutate(new_genome_1)
         # new_genome_2 = self.mutate(new_genome_2)
