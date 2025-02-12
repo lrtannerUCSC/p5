@@ -73,7 +73,7 @@ class Individual_Grid(object):
             "?": 2,  # Question block
             "M": 1,  # Mushroom block
             "E": 10, # Enemy
-            "O": 30, # Coin
+            "o": 30, # Coin
             "T": 10,  # Pipe top
         }
         tiles = list(tile_weights.keys())
@@ -227,7 +227,7 @@ class Individual_Grid(object):
             if y >= height - 3:
                 return False
             
-        if tile == "O":
+        if tile == "o":
             # Do not place at ground level
             if y >= height - 1:
                 return False
@@ -363,7 +363,7 @@ class Individual_Grid(object):
         return True
     
     def is_coin_reachable(self, genome, tile, x, y):
-        if tile == "O":
+        if tile == "o":
             # Check tiles 3 and 4 spots below the question block
             for dy in range(1, 4):  # Check 1 to 4 tiles below
                 ny = y + dy  # Calculate the y-coordinate of the tile below
@@ -673,7 +673,8 @@ class Individual_DE(object):
         return Individual_DE(g)
 
 
-Individual = Individual_DE
+# Individual = Individual_DE
+Individual = Individual_Grid
 
 
 def generate_successors(population,  generation, selection_method="tournament"):
@@ -771,7 +772,7 @@ def ga():
                     print("Max fitness:", str(best.fitness()))
                     print("Average generation time:", (now - start) / generation)
                     print("Net time:", now - start)
-                    with open("levels/last.txt", 'w+') as f:
+                    with open("levels/last.txt", 'w') as f:
                         for row in best.to_level():
                             f.write("".join(row) + "\n")
                 generation += 1
