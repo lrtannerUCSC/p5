@@ -64,7 +64,7 @@ class Individual_Grid(object):
 
     # Mutate a genome into a new genome.  Note that this is a _genome_, not an individual!
     def mutate(self, genome, generation):
-        mutation_rate = 0.05 / (1 + generation * 0.1)
+        mutation_rate = 0.1 / (1 + generation)
 
         tile_weights = {
             "-": 1,  # Empty space (low weight)
@@ -80,13 +80,18 @@ class Individual_Grid(object):
         weights = list(tile_weights.values())
 
         # Iterate over each cell in the grid (excluding the first and last columns)
-        left = 1
+        left = 2
         right = width - 1
         for y in range(height):
             for x in range(left, right):
 
                 if genome[y][x] in ["T", "|"]:
                     continue  # Protect pipes from being overwritten
+            
+                initial_mutation_rate = mutation_rate
+                # Increase mutation rate for empty spaces
+                if genome[y][x] == "-":
+                    mutation_rate = initial_mutation_rate * 5
 
                 if random.random() < mutation_rate:
                     # Count neighboring blocks
@@ -106,8 +111,9 @@ class Individual_Grid(object):
                         genome[y][x] = new_tile
                     else:
                         # If the placement is invalid, try to place required blocks
-                        if random.random() < (0.1 / (1 + generation * 0.1)):  # 10% chance to attempt fixing decreasing with each gen
+                        if random.random() < (0.2 / (1 + generation)):  # 10% chance to attempt fixing decreasing with each gen
                             self.place_required_blocks(genome, new_tile, x, y)
+                mutation_rate = initial_mutation_rate # Reset mutation rate
         return genome
     
     # Helper function for mutations to check if new tile is valid
@@ -130,7 +136,7 @@ class Individual_Grid(object):
             return False
         
         # Ensure question mark blocks are reachable
-        if not self.is_question_block_reachable(genome, tile, x, y):
+        if not self.is_block_reachable(genome, tile, x, y):
             return False
         
         # Ensure coins are reachable
@@ -216,6 +222,11 @@ class Individual_Grid(object):
         if tile == "O":
             # Do not place at ground level
             if y >= height - 1:
+                return False
+            
+        if tile == "E":
+            # Do not place at beginning of level
+            if x <= width/4:
                 return False
         
         return True
@@ -306,12 +317,13 @@ class Individual_Grid(object):
         
         return True
     
-    def is_question_block_reachable(self, genome, tile, x, y):
+    def is_block_reachable(self, genome, tile, x, y):
         if tile in ["?", "M"]:  # Only apply this check to question mark blocks
 
             # Check if the question block is too low to headbutt
             if y >= height - 2:
                 return False
+        
             # Check tiles 1 and 2 spots below the question block
             for dy in range(1, 2):  # Check 1 and 2 tiles below
                 ny = y + dy  # Calculate the y-coordinate of the tile below
@@ -327,6 +339,7 @@ class Individual_Grid(object):
                     return False
                 if genome[ny][x] in ["X", "B", "?", "M", "T"]:  # Ground or platform tiles
                     return True  # The block is reachable
+                
             
             # If no ground or platform is found within 2-3 tiles below, the block is unreachable
             return False
