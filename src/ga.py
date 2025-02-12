@@ -72,7 +72,8 @@ class Individual_Grid(object):
             "B": 5,  # Breakable block
             "?": 2,  # Question block
             "M": 1,  # Mushroom block
-            "E": 10,  # Enemy
+            "E": 30, # Enemy
+            "O": 50, # Coin
             "T": 4,  # Pipe top
         }
         tiles = list(tile_weights.keys())
@@ -132,6 +133,10 @@ class Individual_Grid(object):
         if not self.is_question_block_reachable(genome, tile, x, y):
             return False
         
+        # Ensure coins are reachable
+        if not self.is_coin_reachable(genome, tile, x, y):
+            return False
+        
         # Ensure wall blocks are supported
         if not self.is_wall_block_supported(genome, tile, x, y):
             return False
@@ -148,6 +153,10 @@ class Individual_Grid(object):
         }
         tiles = list(tile_weights.keys())
         weights = list(tile_weights.values())
+
+        # Do not force enemy mutation
+        if tile == "E":
+            return False
 
         if tile == "T":  # Pipe top
             # Place pipe bodies below until we reach a solid block or the bottom
@@ -190,18 +199,23 @@ class Individual_Grid(object):
             return False
         
         if tile == "T":
-            # Do not place above half height
-            if y < height/2:
+            # Do not place above half height or near start
+            if y < height/2 or x < width/4:
                 return False
         
         if tile == "|":
             # Do not place above half height + 1
-            if y < height/2 + 1:
+            if y < height/2 + 1 or x < width/4:
                 return False
             
         if tile in ["B", "M", "?"]:
             # Do not place near ground level
             if y >= height - 3:
+                return False
+            
+        if tile == "O":
+            # Do not place at ground level
+            if y >= height - 1:
                 return False
         
         return True
@@ -249,8 +263,10 @@ class Individual_Grid(object):
 
     def enemy_on_ground(self, genome, tile, x, y):
         if tile == "E":
-            # Check if the tile below is either "X", "B", "?", or "M
-            if y < height - 2 and genome[y + 1][x] not in ["X", "B", "?", "M"]:
+            if y >= height - 1:
+                return False
+            # Check if the tile below is either ground or platform
+            if genome[y + 1][x] not in ["X", "B", "?", "M", "T"]:
                 return False
         return True
     
@@ -318,6 +334,24 @@ class Individual_Grid(object):
         # If the tile is not a question mark block, skip this check
         return True
     
+    def is_coin_reachable(self, genome, tile, x, y):
+        if tile == "O":
+            # Check tiles 3 and 4 spots below the question block
+            for dy in range(1, 4):  # Check 1 to 4 tiles below
+                ny = y + dy  # Calculate the y-coordinate of the tile below
+                if ny < height:
+                    if genome[ny][x] in ["X", "B", "?", "M", "T"]:  # Ground or platform tiles
+                        return True  # The block is reachable
+            
+            # If no ground or platform is found within 1-3 tiles below, the coin is unreachable
+            return False
+        # If the tile is not a coin, skip this check
+        return True
+    
+    # Check if there is ground or platform within jumping distance of the pipe top
+    def is_pipe_scalable(self, genome, tile, x, y):
+        pass
+
     def count_neighboring_blocks(self, genome, x, y):
         count = 0
         for dy in range(-1, 2):  # Check rows above, current, and below
