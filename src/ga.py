@@ -114,6 +114,9 @@ class Individual_Grid(object):
     def is_valid_tile(self, genome, tile, x, y):
         # Check if the tile is valid in its position
         if tile == "|" or tile == "T":  # Pipe segments and tops
+            # Pipes must be below the middle of the level
+            if y < height/2:
+                return False
             # Pipes must be placed on solid ground
             if y < height - 1 and genome[y + 1][x] != ("X" or "|"):
                 return False
@@ -156,8 +159,22 @@ class Individual_Grid(object):
         return False
 
     def place_required_blocks(self, genome, tile, x, y):
+
+        tile_weights = {
+            "B": 10,  # Breakable block
+            "?": 3,  # Question block
+            "M": 1,  # Mushroom block
+        }
+        tiles = list(tile_weights.keys())
+        weights = list(tile_weights.values())
+
         if tile == "T":  # Pipe top
             # Place pipe bodies below until we reach a solid block or the bottom
+
+            # If pipe is above the middle of the level, do not place
+            if y < height/2:
+                genome[y][x] = "-"
+
             for ny in range(y + 1, height):
                 if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
                     break
@@ -167,6 +184,11 @@ class Individual_Grid(object):
 
         elif tile == "|":  # Pipe body
             # Place a pipe top above it
+            
+            # If pipe is above the middle of the level, do not place
+            if y < height/2:
+                genome[y][x] = "-"
+
             if y > 0 and genome[y - 1][x] == "-":  # Ensure the tile above is empty
                 self.place_tile_safely(genome, x, y - 1, "T")  # Add a pipe top
             # Place pipe bodies below until we reach a solid block or the bottom
@@ -184,17 +206,9 @@ class Individual_Grid(object):
             for dx in range(-group_length, group_length + 1):
                 nx = x + dx
                 if 0 <= nx < width and genome[y][nx] == "-":  # Ensure within bounds and empty
-                    self.place_tile_safely(genome, nx, y, tile)  # Add the same type of block
+                    new_tile = random.choices(tiles, weights, k=1)[0]
+                    self.place_tile_safely(genome, nx, y, new_tile)  # Add the same type of block
             return True  # Successfully placed required blocks
-
-        # elif tile == "X":  # Wall block
-        #     # Place other "X" blocks below until we reach the ground level
-        #     for ny in range(y + 1, height):
-        #         if genome[ny][x] == "X":  # Stop if we hit another "X"
-        #             break
-        #         if not self.place_tile_safely(genome, x, ny, "X"):  # Add a wall block
-        #             break  # Stop if we can't place the tile
-        #     return True  # Successfully placed required blocks
 
         return False  # No action needed for other tiles    
     
@@ -247,7 +261,7 @@ class Individual_Grid(object):
             brick_count = 0
             for nx, ny in neighbors:
                 if 0 <= nx < width and 0 <= ny < height:  # Ensure the neighbor is within bounds
-                    if genome[ny][nx] == "B":
+                    if genome[ny][nx] == ("B" or "?" or "M"):
                         brick_count += 1
             
             # Require at least one adjacent brick
@@ -326,6 +340,7 @@ class Individual_Grid(object):
         #             new_genome_1[y][x] = other.genome[y][x]
         #             # new_genome_2[y][x] = self.genome[y][x]
 
+        # Take column from either parent
         for x in range(left, right):
             if random.random() < bias:
                 for y in range(height):
