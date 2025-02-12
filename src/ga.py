@@ -93,8 +93,8 @@ class Individual_Grid(object):
                     neighbor_count = self.count_neighboring_blocks(genome, x, y)
                     # Increase the probability of placing a block if there are neighboring blocks
                     if neighbor_count > 0:
-                        # Adjust weights to favor blocks
-                        adjusted_weights = [w * (1 + neighbor_count) for w in weights]
+                        # Increase weights of non-empty tiles
+                        adjusted_weights = [w * (1 + neighbor_count) if tile != "-" else w for tile, w in zip(tiles, weights)]
                     else:
                         adjusted_weights = weights
                     
