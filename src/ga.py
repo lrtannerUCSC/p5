@@ -72,9 +72,9 @@ class Individual_Grid(object):
             "B": 5,  # Breakable block
             "?": 2,  # Question block
             "M": 1,  # Mushroom block
-            "E": 30, # Enemy
-            "O": 50, # Coin
-            "T": 4,  # Pipe top
+            "E": 10, # Enemy
+            "O": 30, # Coin
+            "T": 10,  # Pipe top
         }
         tiles = list(tile_weights.keys())
         weights = list(tile_weights.values())
@@ -128,7 +128,7 @@ class Individual_Grid(object):
             return False
             
         # Ensure enemies do not spawn at the ground level
-        if not self.enemy_on_ground(genome, tile, x, y):
+        if not self.enemy_near_ground(genome, tile, x, y):
             return False
         
         # Ensure bricks are in groups
@@ -164,8 +164,12 @@ class Individual_Grid(object):
         if tile == "E":
             return False
 
+        # Place pipe bodies below until we reach a solid block or the bottom
         if tile == "T":  # Pipe top
-            # Place pipe bodies below until we reach a solid block or the bottom
+            
+            # If too high, do not place no matter what
+            if not self.is_allowed_at_level(genome, tile, x, y):
+                return False
 
             # Do not allow stacked pipe tops
             if not self.stack_pipe_top_check(genome, tile, x, y):
@@ -199,7 +203,7 @@ class Individual_Grid(object):
 
         return False  # No action needed for other tiles   
     
-    def is_allowed_at_level(self, genome, x, y, tile):
+    def is_allowed_at_level(self, genome, tile, x, y):
         # Only walls and empty space allowed at ground level
         if y >= height - 1 and tile not in ["X", "-"]:
             return False
@@ -223,9 +227,9 @@ class Individual_Grid(object):
             # Do not place at ground level
             if y >= height - 1:
                 return False
-            
+
         if tile == "E":
-            # Do not place at beginning of level
+            # Do not place near start
             if x <= width/4:
                 return False
         
@@ -257,6 +261,9 @@ class Individual_Grid(object):
             for ny in range(y + 1, height):
                 if genome[ny][x] not in ["X", "B", "|"]:
                     return False
+            # Must have platform nearby to be able to scale pipe
+            if not self.is_pipe_scalable(genome, tile, x, y):
+                return False
             return True
         return True
 
@@ -272,13 +279,17 @@ class Individual_Grid(object):
         # If the tile is not an "X" block, skip this check
         return True
 
-    def enemy_on_ground(self, genome, tile, x, y):
+    def enemy_near_ground(self, genome, tile, x, y):
         if tile == "E":
             if y >= height - 1:
                 return False
             # Check if the tile below is either ground or platform
-            if genome[y + 1][x] not in ["X", "B", "?", "M", "T"]:
-                return False
+            for dy in range(1, 4):
+                ny = y + dy
+                if ny <= height-1:
+                    if genome[ny][x] in ["X", "B", "?", "M", "T"]:
+                        return True
+            return False
         return True
     
     def pipe_has_top(self, genome, tile, x, y):
@@ -363,7 +374,19 @@ class Individual_Grid(object):
     
     # Check if there is ground or platform within jumping distance of the pipe top
     def is_pipe_scalable(self, genome, tile, x, y):
-        pass
+        if tile == "T":  # Check if it's a pipe top
+            for dy in range(1, 4):  # Check 1-3 blocks below
+                ny = y + dy
+                if ny < height:  # Ensure within level bounds
+                    for dx in range(-2, 0):  # Check 2 blocks to the left (-2 and -1)
+                        nx = x + dx
+                        if 0 <= nx < width:  # Ensure within level bounds
+                            if genome[ny][nx] in ["B", "X", "M", "?"]:  # Check for solid ground
+                                return True
+            return False  # No valid platform found, not scalable
+        
+        return True  # Ignore if not a pipe top
+
 
     def count_neighboring_blocks(self, genome, x, y):
         count = 0
@@ -737,9 +760,11 @@ def ga():
     with mpool.Pool(processes=os.cpu_count()) as pool:
         init_time = time.time()
         # STUDENT (Optional) change population initialization
-        population = [Individual.random_individual() if random.random() < 0.9
-                      else Individual.empty_individual()
-                      for _g in range(pop_limit)]
+        # population = [Individual.random_individual() if random.random() < 0.9
+        #               else Individual.empty_individual()
+        #               for _g in range(pop_limit)]
+        population = [Individual.empty_individual()
+                        for _g in range(pop_limit)]
         # But leave this line alone; we have to reassign to population because we get a new population that has more cached stuff in it.
         population = pool.map(Individual.calculate_fitness,
                               population,
