@@ -72,7 +72,7 @@ class Individual_Grid(object):
             "B": 5,  # Breakable block
             "?": 2,  # Question block
             "M": 1,  # Mushroom block
-            "E": 5,  # Enemy
+            "E": 10,  # Enemy
             "T": 4,  # Pipe top
         }
         tiles = list(tile_weights.keys())
@@ -117,7 +117,7 @@ class Individual_Grid(object):
             return False
 
         # Ensure pipe has a supported top
-        if not self.is_pipe_supported(genome, tile, x, y):
+        if not self.is_pipe_top_allowed(genome, tile, x, y):
             return False
             
         # Ensure enemies do not spawn at the ground level
@@ -138,6 +138,51 @@ class Individual_Grid(object):
     
         # Add more constraints as needed
         return True
+    
+    def place_required_blocks(self, genome, tile, x, y):
+
+        tile_weights = {
+            "B": 10,  # Breakable block
+            "?": 3,  # Question block
+            "M": 1,  # Mushroom block
+        }
+        tiles = list(tile_weights.keys())
+        weights = list(tile_weights.values())
+
+        if tile == "T":  # Pipe top
+            # Place pipe bodies below until we reach a solid block or the bottom
+
+            # Do not allow stacked pipe tops
+            if not self.stack_pipe_top_check(genome, tile, x, y):
+                return False
+
+            for ny in range(y + 1, height-1):
+                if genome[ny][x] in ["X", "B"]:  # Stop if we hit a solid block
+                    break
+                genome[ny][x] = "|"
+            # Ensure pipe has top at the end
+            if not self.pipe_has_top(genome, "|", x, y+1):
+                pipe_found = False
+                for nny in range (height-1, 0, -1):
+                    if genome[nny][x] == "|":
+                        pipe_found = True
+                    if pipe_found and genome[nny][x] != "|":
+                        genome[nny][x] = "T"
+                        break
+            return True  # Successfully placed required blocks
+
+        elif tile in ["B", "?", "M"]:  # Brick, question block, or mushroom block
+            # Determine the length of the group (random between 1 and 7)
+            group_length = random.randint(1, 7)
+            # Place blocks horizontally to the left and right
+            for dx in range(-group_length, group_length + 1):
+                nx = x + dx
+                if 1 <= nx < width-1:  # Ensure within bounds and empty
+                    new_tile = random.choices(tiles, weights, k=1)[0]
+                    self.place_tile_safely(genome, nx, y, new_tile)  # Add the same type of block
+            return True  # Successfully placed required blocks
+
+        return False  # No action needed for other tiles   
     
     def is_allowed_at_level(self, genome, x, y, tile):
         # Only walls and empty space allowed at ground level
@@ -169,71 +214,24 @@ class Individual_Grid(object):
         elif genome[y][x] not in ["T", "|"]:  # Do not overwrite existing pipes for other tiles
             genome[y][x] = tile
             return True
-        return False
-
-    def place_required_blocks(self, genome, tile, x, y):
-
-        tile_weights = {
-            "B": 10,  # Breakable block
-            "?": 3,  # Question block
-            "M": 1,  # Mushroom block
-        }
-        tiles = list(tile_weights.keys())
-        weights = list(tile_weights.values())
-
-        if tile == "T":  # Pipe top
-            # Place pipe bodies below until we reach a solid block or the bottom
-
-            for ny in range(y + 1, height):
-                if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
-                    break
-                if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
-                    break  # Stop if we can't place the tile
-            # Ensure pipe has top at the end
-            if not self.pipe_has_top(genome, "|", x, y+1):
-                for nny in range (int(height/2), height):
-                    # If not, add top
-                    if genome[nny][x] == "|":
-                        genome[nny-1][x] = "T"
-            return True  # Successfully placed required blocks
-
-        # elif tile == "|":  # Pipe body
-        #     # Place a pipe top above it
-
-        #     # If pipe is above the middle of the level, do not place
-        #     if y < height/2:
-        #         genome[y][x] = "-"
-
-        #     if y > height/2:
-        #         self.place_tile_safely(genome, x, y - 1, "T")  # Add a pipe top
-        #     # Place pipe bodies below until we reach a solid block or the bottom
-        #     for ny in range(y + 1, height):
-        #         if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
-        #             break
-        #         if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
-        #             break  # Stop if we can't place the tile
-        #     return True  # Successfully placed required blocks
-
-        elif tile in ["B", "?", "M"]:  # Brick, question block, or mushroom block
-            # Determine the length of the group (random between 1 and 7)
-            group_length = random.randint(1, 7)
-            # Place blocks horizontally to the left and right
-            for dx in range(-group_length, group_length + 1):
-                nx = x + dx
-                if 1 <= nx < width-1:  # Ensure within bounds and empty
-                    new_tile = random.choices(tiles, weights, k=1)[0]
-                    self.place_tile_safely(genome, nx, y, new_tile)  # Add the same type of block
-            return True  # Successfully placed required blocks
-
-        return False  # No action needed for other tiles    
+        return False 
     
-    def is_pipe_supported(self, genome, tile, x, y):
-        if tile == "T":
-            
-            
-            # Must have pipe body or ground or platform beneath it
-            if y < height - 1 and genome[y + 1][x] not in ["|", "X", "B"]:
+    def stack_pipe_top_check(self, genome, tile, x, y):
+        # Do not allow stacked tops
+        for ny in range(0, height):
+            if genome[ny][x] == "T":
                 return False
+        return True
+    
+    def is_pipe_top_allowed(self, genome, tile, x, y):
+        if tile == "T":
+            # Do not allow stacked tops
+            if not self.stack_pipe_top_check(genome, tile, x, y):
+                return False
+            # Must have pipe body, ground or platform beneath it
+            for ny in range(y + 1, height):
+                if genome[ny][x] not in ["X", "B", "|"]:
+                    return False
             return True
         return True
 
@@ -257,13 +255,14 @@ class Individual_Grid(object):
         return True
     
     def pipe_has_top(self, genome, tile, x, y):
-        # Check if the pipe has a top
         if tile == "|":
-            for i in range(int(height/2), y-1):
+            for i in range(y-1, 1, -1):  # Scan upwards
                 if genome[i][x] == "T":
                     return True
+                if genome[i][x] in ["X", "-"]:  # Stop at solid ground or empty space
+                    return False
         return False
-    
+ 
     def bricks_in_groups(self, genome, tile, x, y):
         if tile == "B":
             # Check neighboring tiles (left, right, above, below)
