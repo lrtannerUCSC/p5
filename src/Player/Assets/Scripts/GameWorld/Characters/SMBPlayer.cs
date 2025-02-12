@@ -64,13 +64,13 @@ public class SMBPlayer : SMBCharacter {
 		Jump ();
 		PlayJumpAnimation (speed);
 
-		if (Input.GetKey (KeyCode.LeftArrow)) {
+		if (Input.GetKey (KeyCode.A)) {
 
 			Move (speed * (float)SMBConstants.MoveDirection.Backward);
 			PlayMoveAnimation (speed, (float)SMBConstants.MoveDirection.Backward);
 			Coast (SMBConstants.MoveDirection.Backward);
 		} 
-		else if (Input.GetKey (KeyCode.RightArrow)) {
+		else if (Input.GetKey (KeyCode.D)) {
 
 			Move (speed * (float)SMBConstants.MoveDirection.Forward);
 			PlayMoveAnimation (speed, (float)SMBConstants.MoveDirection.Forward);
@@ -104,7 +104,7 @@ public class SMBPlayer : SMBCharacter {
 	float DefineMoveSpeed() {
 
 		float speed = xSpeed;
-		if (Input.GetKey (KeyCode.Z)) {
+		if (Input.GetKey (KeyCode.LeftShift)) {
 
 			speed *= runningMultiplyer;
 
@@ -248,7 +248,7 @@ public class SMBPlayer : SMBCharacter {
 				
 	void Jump() {
 
-		if (_isOnGround && Input.GetKeyDown(KeyCode.X)){
+		if (_isOnGround && Input.GetKeyDown(KeyCode.Space)){
 
 			_jumpTimer = longJumpTime;
 			_body.velocity.y = ySpeed * Time.fixedDeltaTime;
@@ -258,12 +258,12 @@ public class SMBPlayer : SMBCharacter {
 
 		if (_jumpTimer > 0f) {
 
-			if (Input.GetKeyUp(KeyCode.X)) {
+			if (Input.GetKeyUp(KeyCode.Space)) {
 
 				_jumpTimer = 0f;
 
 			}
-			else if(_body.velocity.y > 0f && Input.GetKey(KeyCode.X)) {
+			else if(_body.velocity.y > 0f && Input.GetKey(KeyCode.Space)) {
 
 				float runningBoost = 1f;
 				if (_runningTimer >= runTime)

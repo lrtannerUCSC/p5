@@ -63,9 +63,8 @@ class Individual_Grid(object):
         return self._fitness
 
     # Mutate a genome into a new genome.  Note that this is a _genome_, not an individual!
-    def mutate(self, genome):
-        # Start with a higher mutation rate (e.g., 5%) and reduce it over time
-        mutation_rate = 0.05
+    def mutate(self, genome, generation):
+        mutation_rate = 0.05 / (1 + generation * 0.1)
 
         tile_weights = {
             "-": 1,  # Empty space (low weight)
@@ -106,30 +105,23 @@ class Individual_Grid(object):
                         genome[y][x] = new_tile
                     else:
                         # If the placement is invalid, try to place required blocks
-                        if random.random() < 0.1:  # 10% chance to attempt fixing
+                        if random.random() < (0.1 / (1 + generation * 0.1)):  # 10% chance to attempt fixing decreasing with each gen
                             self.place_required_blocks(genome, new_tile, x, y)
         return genome
     
     # Helper function for mutations to check if new tile is valid
     def is_valid_tile(self, genome, tile, x, y):
-        # Check if the tile is valid in its position
-        if tile == "|" or tile == "T":  # Pipe segments and tops
-            # Pipes must be below the middle of the level
-            if y < height/2:
-                return False
-            # Pipes must be placed on solid ground
-            if y < height - 1 and genome[y + 1][x] != ("X" or "|"):
-                return False
-            # Ensure pipe segments have a valid top
-            if not self.pipe_has_top(genome, tile, x, y):
-                return False
+
+        # Ensure tile is allowed at y level
+        if not self.is_allowed_at_level(genome, tile, x, y):
+            return False
+
+        # Ensure pipe has a supported top
+        if not self.is_pipe_supported(genome, tile, x, y):
+            return False
             
         # Ensure enemies do not spawn at the ground level
         if not self.enemy_on_ground(genome, tile, x, y):
-            return False
-        
-        # Ensure ground tiles are walls or empty space
-        if not self.ground_tile_check(genome, tile, x, y):
             return False
         
         # Ensure bricks are in groups
@@ -147,7 +139,28 @@ class Individual_Grid(object):
         # Add more constraints as needed
         return True
     
-    
+    def is_allowed_at_level(self, genome, x, y, tile):
+        # Only walls and empty space allowed at ground level
+        if y >= height - 1 and tile not in ["X", "-"]:
+            return False
+        
+        if tile == "T":
+            # Do not place above half height
+            if y < height/2:
+                return False
+        
+        if tile == "|":
+            # Do not place above half height + 1
+            if y < height/2 + 1:
+                return False
+            
+        if tile in ["B", "M", "?"]:
+            # Do not place near ground level
+            if y >= height - 3:
+                return False
+        
+        return True
+        
     def place_tile_safely(self, genome, x, y, tile):
         if tile == "|":
             # Always allow placing pipe bodies, even if the target tile is part of a pipe
@@ -171,33 +184,35 @@ class Individual_Grid(object):
         if tile == "T":  # Pipe top
             # Place pipe bodies below until we reach a solid block or the bottom
 
-            # If pipe is above the middle of the level, do not place
-            if y < height/2:
-                genome[y][x] = "-"
-
             for ny in range(y + 1, height):
                 if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
                     break
                 if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
                     break  # Stop if we can't place the tile
+            # Ensure pipe has top at the end
+            if not self.pipe_has_top(genome, "|", x, y+1):
+                for nny in range (int(height/2), height):
+                    # If not, add top
+                    if genome[nny][x] == "|":
+                        genome[nny-1][x] = "T"
             return True  # Successfully placed required blocks
 
-        elif tile == "|":  # Pipe body
-            # Place a pipe top above it
+        # elif tile == "|":  # Pipe body
+        #     # Place a pipe top above it
 
-            # If pipe is above the middle of the level, do not place
-            if y < height/2:
-                genome[y][x] = "-"
+        #     # If pipe is above the middle of the level, do not place
+        #     if y < height/2:
+        #         genome[y][x] = "-"
 
-            if y > 0 and genome[y - 1][x] == "-":  # Ensure the tile above is empty
-                self.place_tile_safely(genome, x, y - 1, "T")  # Add a pipe top
-            # Place pipe bodies below until we reach a solid block or the bottom
-            for ny in range(y + 1, height):
-                if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
-                    break
-                if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
-                    break  # Stop if we can't place the tile
-            return True  # Successfully placed required blocks
+        #     if y > height/2:
+        #         self.place_tile_safely(genome, x, y - 1, "T")  # Add a pipe top
+        #     # Place pipe bodies below until we reach a solid block or the bottom
+        #     for ny in range(y + 1, height):
+        #         if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
+        #             break
+        #         if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
+        #             break  # Stop if we can't place the tile
+        #     return True  # Successfully placed required blocks
 
         elif tile in ["B", "?", "M"]:  # Brick, question block, or mushroom block
             # Determine the length of the group (random between 1 and 7)
@@ -205,13 +220,23 @@ class Individual_Grid(object):
             # Place blocks horizontally to the left and right
             for dx in range(-group_length, group_length + 1):
                 nx = x + dx
-                if 0 <= nx < width and genome[y][nx] == "-":  # Ensure within bounds and empty
+                if 1 <= nx < width-1:  # Ensure within bounds and empty
                     new_tile = random.choices(tiles, weights, k=1)[0]
                     self.place_tile_safely(genome, nx, y, new_tile)  # Add the same type of block
             return True  # Successfully placed required blocks
 
         return False  # No action needed for other tiles    
     
+    def is_pipe_supported(self, genome, tile, x, y):
+        if tile == "T":
+            
+            
+            # Must have pipe body or ground or platform beneath it
+            if y < height - 1 and genome[y + 1][x] not in ["|", "X", "B"]:
+                return False
+            return True
+        return True
+
     def is_wall_block_supported(self, genome, tile, x, y):
         if tile == "X":  # Only apply this check to wall blocks
             if y == height - 1:  # Ground level, always valid
@@ -226,26 +251,18 @@ class Individual_Grid(object):
 
     def enemy_on_ground(self, genome, tile, x, y):
         if tile == "E":
-            # Check if the enemy is at ground level
-            if y >= height:
-                return False
             # Check if the tile below is either "X", "B", "?", or "M
-            if y < height - 1 and genome[y + 1][x] not in ["X", "B", "?", "M"]:
+            if y < height - 2 and genome[y + 1][x] not in ["X", "B", "?", "M"]:
                 return False
         return True
     
     def pipe_has_top(self, genome, tile, x, y):
+        # Check if the pipe has a top
         if tile == "|":
-            # Check if the tile above is either "T" or "|"
-            if y > 0 and genome[y - 1][x] not in ["T", "|"]:
-                return False
-        return True
-    
-    def ground_tile_check(self, genome, tile, x, y):
-        if y >= height:  # Check if it's the bottom row
-            if tile not in ["X", "-"]:
-                return False
-        return True
+            for i in range(int(height/2), y-1):
+                if genome[i][x] == "T":
+                    return True
+        return False
     
     def bricks_in_groups(self, genome, tile, x, y):
         if tile == "B":
@@ -256,6 +273,10 @@ class Individual_Grid(object):
                 # (x, y - 1),  # Above
                 # (x, y + 1),  # Below
             ]
+
+            # No bricks at the ground level
+            if y >= height - 2:
+                return False
             
             # Count how many neighboring tiles are also bricks
             brick_count = 0
@@ -312,7 +333,7 @@ class Individual_Grid(object):
 
 
     # Create zero or more children from self and other
-    def generate_children(self, other):
+    def generate_children(self, other, generation):
         # Calculate fitness for both parents
         self_fitness = self.fitness()
         other_fitness = other.fitness()
@@ -332,17 +353,6 @@ class Individual_Grid(object):
         # do crossover with other
         left = 1
         right = width - 1
-        # for y in range(height):
-        #     for x in range(left, right):
-        #         # STUDENT Which one should you take?  Self, or other?  Why?
-        #         # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-        #         # Use bias to decide whether to take the gene from self or other
-        #         if random.random() < bias:
-        #             new_genome_1[y][x] = self.genome[y][x]
-        #             # new_genome_2[y][x] = other.genome[y][x]
-        #         else:
-        #             new_genome_1[y][x] = other.genome[y][x]
-        #             # new_genome_2[y][x] = self.genome[y][x]
 
         # Take column from either parent
         for x in range(left, right):
@@ -354,7 +364,7 @@ class Individual_Grid(object):
                     new_genome_1[y][x] = other.genome[y][x]
                 
         # do mutation; note we're returning a one-element tuple here
-        new_genome_1 = self.mutate(new_genome_1)
+        new_genome_1 = self.mutate(new_genome_1, generation)
         # new_genome_2 = self.mutate(new_genome_2)
         return (Individual_Grid(new_genome_1),)
 
@@ -611,7 +621,7 @@ class Individual_DE(object):
 Individual = Individual_Grid
 
 
-def generate_successors(population, selection_method="tournament"):
+def generate_successors(population,  generation, selection_method="tournament"):
     results = []
     # STUDENT Design and implement this
     # Hint: Call generate_children() on some individuals and fill up results.
@@ -632,7 +642,7 @@ def generate_successors(population, selection_method="tournament"):
         parent2 = select_parent(population)
         
         # Generate children from the parents
-        children = parent1.generate_children(parent2)
+        children = parent1.generate_children(parent2, generation)
         
         # Add the children to the results
         results.extend(children)
@@ -714,7 +724,7 @@ def ga():
                     break
                 # STUDENT Also consider using FI-2POP as in the Sorenson & Pasquier paper
                 gentime = time.time()
-                next_population = generate_successors(population, selection_method="tournament")
+                next_population = generate_successors(population, selection_method="tournament", generation=generation)
                 gendone = time.time()
                 print("Generated successors in:", gendone - gentime, "seconds")
                 # Calculate fitness in batches in parallel
