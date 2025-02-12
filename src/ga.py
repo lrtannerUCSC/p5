@@ -207,6 +207,10 @@ class Individual_Grid(object):
         # Only walls and empty space allowed at ground level
         if y >= height - 1 and tile not in ["X", "-"]:
             return False
+
+        # Do not place right next to pipe since it is 2 wide
+        if genome[y][x-1] in ["T", "|"]:
+            return False
         
         if tile == "T":
             # Do not place above half height or near start
@@ -240,7 +244,7 @@ class Individual_Grid(object):
             # Always allow placing pipe bodies, even if the target tile is part of a pipe
             genome[y][x] = tile
             return True
-        elif genome[y][x] not in ["T", "|"]:  # Do not overwrite existing pipes for other tiles
+        elif (genome[y][x] and genome[y][x-1]) not in ["T", "|"]:  # Do not overwrite existing pipes for other tiles
             genome[y][x] = tile
             return True
         return False 
