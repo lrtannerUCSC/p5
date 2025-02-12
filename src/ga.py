@@ -64,24 +64,51 @@ class Individual_Grid(object):
 
     # Mutate a genome into a new genome.  Note that this is a _genome_, not an individual!
     def mutate(self, genome):
-        # STUDENT implement a mutation operator, also consider not mutating this individual
-        # STUDENT also consider weighting the different tile types so it's not uniformly random
-        # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-        mutation_rate = 0.01  # 1% chance to mutate each tile
+        # Start with a higher mutation rate (e.g., 5%) and reduce it over time
+        mutation_rate = 0.05
+
+        tile_weights = {
+            "-": 1,  # Empty space (low weight)
+            "X": 5,  # Solid wall (high weight)
+            "B": 4,  # Breakable block
+            "?": 3,  # Question block
+            "M": 3,  # Mushroom block
+            "E": 2,  # Enemy
+            "|": 2,  # Pipe segment
+            "T": 2,  # Pipe top
+        }
+        tiles = list(tile_weights.keys())
+        weights = list(tile_weights.values())
 
         # Iterate over each cell in the grid (excluding the first and last columns)
         left = 1
         right = width - 1
         for y in range(height):
             for x in range(left, right):
-                # Decide whether to mutate this tile
+
+                if genome[y][x] in ["T", "|"]:
+                    continue  # Protect pipes from being overwritten
+
                 if random.random() < mutation_rate:
-                    # Choose a new tile type randomly from the options list
-                    new_tile = random.choice(options)
-                    # Ensure the new tile is valid in its position
+                    # Count neighboring blocks
+                    neighbor_count = self.count_neighboring_blocks(genome, x, y)
+                    # Increase the probability of placing a block if there are neighboring blocks
+                    if neighbor_count > 0:
+                        # Adjust weights to favor blocks
+                        adjusted_weights = [w * (1 + neighbor_count) for w in weights]
+                    else:
+                        adjusted_weights = weights
+                    
+                    # Select a new tile based on adjusted weights
+                    new_tile = random.choices(tiles, weights=adjusted_weights, k=1)[0]
+                    
+                    # Ensure the new tile is valid
                     if self.is_valid_tile(genome, new_tile, x, y):
                         genome[y][x] = new_tile
-
+                    else:
+                        # If the placement is invalid, try to place required blocks
+                        if random.random() < 0.1:  # 10% chance to attempt fixing
+                            self.place_required_blocks(genome, new_tile, x, y)
         return genome
     
     # Helper function for mutations to check if new tile is valid
@@ -91,12 +118,181 @@ class Individual_Grid(object):
             # Pipes must be placed on solid ground
             if y < height - 1 and genome[y + 1][x] != "X":
                 return False
-        elif tile == "E":  # Enemies
-            # Enemies must be placed on solid ground or platforms
-            if y < height - 1 and genome[y + 1][x] not in ["X", "B", "?"]:
+            # Ensure pipe segments have a valid top
+            if not self.pipe_has_top(genome, tile, x, y):
                 return False
+            
+        # Ensure enemies do not spawn at the ground level
+        if not self.enemy_on_ground(genome, tile, x, y):
+            return False
+        
+        # Ensure ground tiles are walls or empty space
+        if not self.ground_tile_check(genome, tile, x, y):
+            return False
+        
+        # Ensure bricks are in groups
+        if not self.bricks_in_groups(genome, tile, x, y):
+            return False
+        
+        # Ensure question mark blocks are reachable
+        if not self.is_question_block_reachable(genome, tile, x, y):
+            return False
+        
+        # Ensure wall blocks are supported
+        if not self.is_wall_block_supported(genome, tile, x, y):
+            return False
+    
         # Add more constraints as needed
         return True
+    
+    
+    def place_tile_safely(self, genome, x, y, tile):
+        if tile == "|":
+            # Always allow placing pipe bodies, even if the target tile is part of a pipe
+            genome[y][x] = tile
+            return True
+        elif genome[y][x] not in ["T", "|"]:  # Do not overwrite existing pipes for other tiles
+            genome[y][x] = tile
+            return True
+        return False
+
+    def place_required_blocks(self, genome, tile, x, y):
+        if tile == "T":  # Pipe top
+            # Place pipe bodies below until we reach a solid block or the bottom
+            for ny in range(y + 1, height):
+                if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
+                    break
+                if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
+                    break  # Stop if we can't place the tile
+            return True  # Successfully placed required blocks
+
+        elif tile == "|":  # Pipe body
+            # Place a pipe top above it
+            if y > 0 and genome[y - 1][x] == "-":  # Ensure the tile above is empty
+                self.place_tile_safely(genome, x, y - 1, "T")  # Add a pipe top
+            # Place pipe bodies below until we reach a solid block or the bottom
+            for ny in range(y + 1, height):
+                if genome[ny][x] in ["X", "B", "?", "M"]:  # Stop if we hit a solid block
+                    break
+                if not self.place_tile_safely(genome, x, ny, "|"):  # Add a pipe body
+                    break  # Stop if we can't place the tile
+            return True  # Successfully placed required blocks
+
+        elif tile in ["B", "?", "M"]:  # Brick, question block, or mushroom block
+            # Determine the length of the group (random between 1 and 7)
+            group_length = random.randint(1, 7)
+            # Place blocks horizontally to the left and right
+            for dx in range(-group_length, group_length + 1):
+                nx = x + dx
+                if 0 <= nx < width and genome[y][nx] == "-":  # Ensure within bounds and empty
+                    self.place_tile_safely(genome, nx, y, tile)  # Add the same type of block
+            return True  # Successfully placed required blocks
+
+        # elif tile == "X":  # Wall block
+        #     # Place other "X" blocks below until we reach the ground level
+        #     for ny in range(y + 1, height):
+        #         if genome[ny][x] == "X":  # Stop if we hit another "X"
+        #             break
+        #         if not self.place_tile_safely(genome, x, ny, "X"):  # Add a wall block
+        #             break  # Stop if we can't place the tile
+        #     return True  # Successfully placed required blocks
+
+        return False  # No action needed for other tiles    
+    
+    def is_wall_block_supported(self, genome, tile, x, y):
+        if tile == "X":  # Only apply this check to wall blocks
+            if y == height - 1:  # Ground level, always valid
+                return True
+            # Check all tiles below this "X" block
+            for ny in range(y + 1, height):
+                if genome[ny][x] != "X":
+                    return False  # If any tile below is not "X", the block is unsupported
+            return True  # All tiles below are "X", so the block is supported
+        # If the tile is not an "X" block, skip this check
+        return True
+
+    def enemy_on_ground(self, genome, tile, x, y):
+        if tile == "E":
+            # Check if the enemy is at ground level
+            if y >= height:
+                return False
+            # Check if the tile below is either "X", "B", "?", or "M
+            if y < height - 1 and genome[y + 1][x] not in ["X", "B", "?", "M"]:
+                return False
+        return True
+    
+    def pipe_has_top(self, genome, tile, x, y):
+        if tile == "|":
+            # Check if the tile above is either "T" or "|"
+            if y > 0 and genome[y - 1][x] not in ["T", "|"]:
+                return False
+        return True
+    
+    def ground_tile_check(self, genome, tile, x, y):
+        if y == height - 1:  # Check if it's the bottom row
+            if tile not in ["X", "-"]:
+                return False
+        return True
+    
+    def bricks_in_groups(self, genome, tile, x, y):
+        if tile == "B":
+            # Check neighboring tiles (left, right, above, below)
+            neighbors = [
+                (x - 1, y),  # Left
+                (x + 1, y),  # Right
+                # (x, y - 1),  # Above
+                # (x, y + 1),  # Below
+            ]
+            
+            # Count how many neighboring tiles are also bricks
+            brick_count = 0
+            for nx, ny in neighbors:
+                if 0 <= nx < width and 0 <= ny < height:  # Ensure the neighbor is within bounds
+                    if genome[ny][nx] == "B":
+                        brick_count += 1
+            
+            # Require at least one adjacent brick
+            if brick_count == 0:
+                return False
+        
+        return True
+    
+    def is_question_block_reachable(self, genome, tile, x, y):
+        if tile in ["?", "M"]:  # Only apply this check to question mark blocks
+            # Check tiles 1 and 2 spots below the question block
+            for dy in range(1, 2):  # Check 1 and 2 tiles below
+                ny = y + dy  # Calculate the y-coordinate of the tile below
+                if ny >= height:  # If the tile is below the bottom of the level, it's invalid
+                    return False
+                if genome[ny][x] in ["X", "B", "?", "M", "T"]:  # Ground or platform tiles
+                    return False  # The block is not reachable
+            
+            # Check tiles 3 and 4 spots below the question block
+            for dy in range(3, 4):  # Check 2 and 3 tiles below
+                ny = y + dy  # Calculate the y-coordinate of the tile below
+                if ny >= height:  # If the tile is below the bottom of the level, it's invalid
+                    return False
+                if genome[ny][x] in ["X", "B", "?", "M", "T"]:  # Ground or platform tiles
+                    return True  # The block is reachable
+            
+            # If no ground or platform is found within 2-3 tiles below, the block is unreachable
+            return False
+            
+        # If the tile is not a question mark block, skip this check
+        return True
+    
+    def count_neighboring_blocks(self, genome, x, y):
+        count = 0
+        for dy in range(-1, 2):  # Check rows above, current, and below
+            for dx in range(-1, 2):  # Check columns left, current, and right
+                if dx == 0 and dy == 0:  # Skip the current tile
+                    continue
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < width and 0 <= ny < height:  # Ensure within bounds
+                    if genome[ny][nx] != "-":  # Count non-empty tiles
+                        count += 1
+        return count
+
 
     # Create zero or more children from self and other
     def generate_children(self, other):
@@ -126,14 +322,14 @@ class Individual_Grid(object):
                 # Use bias to decide whether to take the gene from self or other
                 if random.random() < bias:
                     new_genome_1[y][x] = self.genome[y][x]
-                    new_genome_2[y][x] = other.genome[y][x]
+                    # new_genome_2[y][x] = other.genome[y][x]
                 else:  # 50% chance to take from other
                     new_genome_1[y][x] = other.genome[y][x]
-                    new_genome_2[y][x] = self.genome[y][x]
+                    # new_genome_2[y][x] = self.genome[y][x]
         # do mutation; note we're returning a one-element tuple here
         new_genome_1 = self.mutate(new_genome_1)
-        new_genome_2 = self.mutate(new_genome_2)
-        return (Individual_Grid(new_genome_1), Individual_Grid(new_genome_2),)
+        # new_genome_2 = self.mutate(new_genome_2)
+        return (Individual_Grid(new_genome_1),)
 
     # Turn the genome into a level string (easy for this genome)
     def to_level(self):
@@ -481,7 +677,7 @@ def ga():
                     print("Max fitness:", str(best.fitness()))
                     print("Average generation time:", (now - start) / generation)
                     print("Net time:", now - start)
-                    with open("levels/last.txt", 'w') as f:
+                    with open("levels/last.txt", 'w+') as f:
                         for row in best.to_level():
                             f.write("".join(row) + "\n")
                 generation += 1
